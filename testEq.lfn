@@ -1,0 +1,7 @@
+(eqn 3 3)
+(eqn 3 -3)
+t
+(if t 1 -1)
+(if nil 1 -1)
+(if (eqn 3 3) 1 -1)
+(if (eqn 3 -3) 1 -1)

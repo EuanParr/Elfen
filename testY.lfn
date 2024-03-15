@@ -1,0 +1,4 @@
+(((lam (f) ((lam (x) (f (x x)))
+            (lam (x) (f (x x)))))
+  (lam (*) (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m))))))
+ 6 5)

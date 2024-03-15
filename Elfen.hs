@@ -12,15 +12,11 @@ Dynamic scope is easy - just have memory map each symbol to a value
 For lexical scope, different occurrences of symbols must be mapped to different values at any one time
 -}
 
-type Address = Integer
-
-type Environment = Map.Map Symbol Address
-
-type Memory = ((Map.Map Address Value), Integer)
+type Environment = Map.Map Symbol Value
 
 data Constant =
     Character Char
-  | Integer Integer
+  | Integer Integer deriving Eq
 
 instance Show Constant where
   show (Character c) = [c]
@@ -34,7 +30,7 @@ data Value =
   | Nil
   | Constant Constant
   | Abstraction Value [Symbol] Environment
-  | Primitive Primitive
+  | Primitive Primitive deriving Eq
 
 instance Show Value where
   show (Symbol s) = s
@@ -49,76 +45,50 @@ showList' v = '(' : f v
  where f Nil = ")"
        f (Cons x y@(Cons _ _)) = show x ++ " " ++ f y
        f (Cons x y) = show x ++ f y
-       f x = " . " ++ show x ++ ")" 
+       f x = " . " ++ show x ++ ")"
 
-newtype MemUser a = Mu {mu :: (Memory -> (a, Memory))}
+-- identity monad for now
+newtype M a = Mu {mu :: a}
 
-instance Functor MemUser where
+instance Functor M where
   fmap = Monad.liftM
 
-instance Applicative MemUser where
-  pure x = Mu (\m -> (x, m))
+instance Applicative M where
+  pure x = Mu x
   (<*>) = Monad.ap 
 
-instance Monad MemUser where
-  (Mu mx) >>= mf = Mu (\m -> let (a, m') = mx m in mu (mf a) m')
+instance Monad M where
+  (Mu mx) >>= mf = mf mx
 --return = pure
 
 {-
 return a >>= k
-= Mu (\m -> (a, m)) >>= k
-= Mu (\m -> let (b, m') = (\m -> (a, m)) m in mu (k b) m')
-= Mu (\m -> let (b, m') = (a, m) in mu (k b) m')
-= Mu (\m -> mu (k a) m)
-= Mu (mu (k a))
+= Mu a >>= k
 = k a
 
 (Mu mx) >>= return
-= Mu (\m -> let (a, m') = mx m in mu (return a) m')
-= Mu (\m -> let (a, m') = mx m in mu (Mu (\n -> (a, n))) m')
-= Mu (\m -> let (a, m') = mx m in (\n -> (a, n)) m')
-= Mu (\m -> let (a, m') = mx m in (a, m'))
-= Mu (\m -> mx m)
+= return mx
 = Mu mx
 
 (Mu mx) >>= (\x -> k x >>= h)
-= Mu (\m -> let (a, m') = mx m in mu ((\x -> k x >>= h) a) m')
-= Mu (\m -> let (a, m') = mx m in mu (k a >>= h) m')
-= Mu (\m -> let (a, m') = mx m in mu (Mu (\n -> let (b, n') = mu (k a) n in mu (h b) n')) m')
-= Mu (\m -> let (a, m') = mx m in (\n -> let (b, n') = mu (k a) n in mu (h b) n') m')
-= Mu (\m -> let (a, m') = mx m in (let (b, n') = mu (k a) m' in mu (h b) n'))
-= Mu (\m -> (let (b, n') = mu (k (fst $ mx m)) (snd $ mx m) in mu (h b) n'))
-= Mu (\m -> mu (h (fst $ mu (k (fst $ mx m)) (snd $ mx m))) (snd $ mu (k (fst $ mx m)) (snd $ mx m))))
-= Mu (\m -> let (a, m') = mu (k (fst $ mx m)) (snd % mx m) in mu (h a) m')
-= Mu (\m -> let (a, m') = (let (b, n') = mx m in mu (k b) n') in mu (h a) m')
-= Mu (\m -> let (a, m') = (\n -> let (b, n') = mx n in mu (k b) n') m in mu (h a) m')
-= Mu (\n -> let (b, n') = mx n in mu (k b) n') >>= h
+= (\x -> k x >>= h) mx
+= k mx >>= h
 = ((Mu mx) >>= k) >>= h
 -}
 
-setVal :: Value -> Address -> MemUser ()
-setVal x a = Mu (\(m, n) -> ((), (Map.insert a x m, n)))
 
-getVal :: Address -> MemUser Value
-getVal a = Mu (\(m, n) -> ((Map.!) m a, (m, n)))
 
-freshAddress :: MemUser Address
-freshAddress = Mu (\(m, n) -> (n, (m, n+1)))
+bind :: Symbol -> Value -> Environment -> Environment
+bind s v e = Map.insert s v e
 
-bind :: Symbol -> Address -> Environment -> Environment
-bind s a e = Map.insert s a e
-
-getAddr :: Symbol -> Environment -> Address
-getAddr s e = (Map.!) e s
-
-eval :: Value -> Environment -> MemUser Value
-eval (Symbol s) e = getVal $ getAddr s e
+eval :: Value -> Environment -> M Value
+eval (Symbol s) e = pure $ (Map.findWithDefault) (error $ "Symbol has no definition: " ++ show s) s e
 eval (Cons x y) e = evalApplication x y e
 eval Nil _ = pure Nil
 eval (Constant c) _ = pure (Constant c)
 eval _ _ = error "Evaluating an applicable value outside of an application"
 
-evalApplication :: Value -> Value -> Environment -> MemUser Value
+evalApplication :: Value -> Value -> Environment -> M Value
 evalApplication (Symbol x) y e -- check for special forms
  | Map.member x specialOperators = (Map.!) specialOperators x y e
 evalApplication x y e = do
@@ -126,7 +96,7 @@ evalApplication x y e = do
   y' <- evalList y e
   apply x' y'
 
-evalList :: Value -> Environment -> MemUser [Value]
+evalList :: Value -> Environment -> M [Value]
 evalList Nil _ = pure []
 evalList (Cons x y) e = do
   x' <- eval x e
@@ -134,7 +104,7 @@ evalList (Cons x y) e = do
   pure (x' : y')
 evalList _ _ = error "Evaluating a non-list as a list"
 
-apply :: Value -> [Value] -> MemUser Value
+apply :: Value -> [Value] -> M Value
 apply (Primitive x) ys = applyPrimitive x ys
 apply (Abstraction x ss e) ys = (defineList (matchingZip ss ys) e) >>= \e' -> eval x e'
   where matchingZip [] [] = []
@@ -142,35 +112,34 @@ apply (Abstraction x ss e) ys = (defineList (matchingZip ss ys) e) >>= \e' -> ev
         matchingZip _ _ = error "different number of arguments and parameters"
 apply _ _ = error "Applying a non-applicable value"
 
--- give a symbol a new address binding and set it to a value
-define :: Symbol -> Value -> Environment -> MemUser Environment
-define s x e = do
-  a <- freshAddress
-  setVal x a
-  pure $ bind s a e
+-- give a symbol a new value binding
+define :: Symbol -> Value -> Environment -> M Environment
+define s v e = pure $ bind s v e
 
-defineList :: [(Symbol, Value)] -> Environment -> MemUser Environment
+defineList :: [(Symbol, Value)] -> Environment -> M Environment
 defineList [] e = pure e
 defineList ((x, y):zs) e = do
   e' <- define x y e
   defineList zs e'
 
 data Primitive = CONS | CF | CS
- | PLUS | MINUS deriving Show
+ | PLUS | MINUS | EQN deriving (Eq, Show)
 
-applyPrimitive :: Primitive -> [Value] -> MemUser Value
+applyPrimitive :: Primitive -> [Value] -> M Value
 applyPrimitive CONS [x,y] = pure $ Cons x y
 applyPrimitive CF [Cons x _] = pure $ x
 applyPrimitive CS [Cons _ y] = pure $ y
 applyPrimitive PLUS [Constant (Integer x), Constant (Integer y)] = pure $ Constant $ Integer (x + y)
 applyPrimitive MINUS [Constant (Integer x), Constant (Integer y)] = pure $ Constant $ Integer (x - y)
+applyPrimitive EQN [Constant (Integer x), Constant (Integer y)] = pure $ if x == y then Symbol "t" else Nil
 applyPrimitive _ _ = error "Wrong argument type (s) for primitive operator"
  
 {- I pick out special operators at symbol level rather than value level - it will not be possible to evaluate anything but some predetermined symbols into special operators, which is in accordance with typical Lisps and will make checking easier (it's hard to imagine what type a special operator might have). -}
-specialOperators :: Map.Map Symbol (Value -> Environment -> MemUser Value)
+specialOperators :: Map.Map Symbol (Value -> Environment -> M Value)
 specialOperators = Map.fromList
                    [("quote", (\(Cons v _) _ -> pure v)),
-                    ("proc", (\(Cons params (Cons body Nil)) e -> pure (Abstraction body (map asSymbol $ unElfenList params) e)))]
+                    ("lam", (\(Cons params (Cons body Nil)) e -> pure (Abstraction body (map asSymbol $ unElfenList params) e))),
+                    ("if", (\(Cons test (Cons true (Cons false Nil))) e -> eval test e >>= (\r -> if r == Nil then eval false e else eval true e)))]
 
 unElfenList :: Value -> [Value]
 unElfenList Nil = []
@@ -179,12 +148,15 @@ unElfenList (Cons x xs) = x: unElfenList xs
 asSymbol :: Value -> Symbol
 asSymbol (Symbol s) = s
 
-initialState :: (Environment, Memory)
-initialState = mu (defineList initialDefinitions Map.empty) (Map.empty, 0)
+initialState :: Environment
+initialState = mu (defineList initialDefinitions Map.empty)
  where initialDefinitions =
-         [("+", Primitive PLUS)]
+         [("+", Primitive PLUS),
+          ("eqn", Primitive EQN),
+          ("t", Symbol "t"),
+          ("nil", Nil)]
 
-evalSequential :: [Value] -> Environment -> MemUser [Value]
+evalSequential :: [Value] -> Environment -> M [Value]
 evalSequential [] _ = pure []
 evalSequential (x:y) e = do
   x' <- eval x e
@@ -192,8 +164,8 @@ evalSequential (x:y) e = do
   pure (x' : y')
 
 enterEval :: [Value] -> [Value]
-enterEval vs = let (initialEnv, initialMem) = initialState in
-  fst $ mu (evalSequential vs initialEnv) initialMem
+enterEval vs = let initialEnv = initialState in
+  mu (evalSequential vs initialEnv) 
 
 data Token = LeftParenthesis | RightParenthesis
   | SymbolLiteral String
