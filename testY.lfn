@@ -2,3 +2,10 @@
             (lam (x) (f (x x)))))
   (lam (*) (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m))))))
  6 5)
+
+(fix (* (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m)))))
+     (* 6 5))
+
+(fix (odd (lam (n) (if (eqn n 1) t (if (even (+ n -1))  nil t)))
+          even (lam (n) (if (eqn n 0) t (if (odd (+ n -1))  nil t))))
+     (even 10))
