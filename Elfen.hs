@@ -142,6 +142,7 @@ specialOperators = Map.fromList
                     ("lam", (\(Cons params (Cons body Nil)) e -> pure (Abstraction body (map asSymbol $ unElfenList params) e))),
                     ("if", (\(Cons test (Cons true (Cons false Nil))) e -> eval test e >>= (\r -> if r == Nil then eval false e else eval true e))),
                     ("letrec1", fixOperator),
+                    ("letrec2", fixOpTwo),
                     ("letrec", mutualFixOperator),
                     ("apply", (\(Cons f (Cons xs Nil)) e -> eval f e >>= \f' -> evalList xs e >>= \xs' -> apply f' xs'))]
 
@@ -152,84 +153,41 @@ fixOperator (Cons (Cons s (Cons v Nil)) (Cons body Nil)) e = do
   e' <- define (asSymbol s) recursiveV e
   eval body e'
 
+fixOpTwo :: Value -> Environment -> M Value
+fixOpTwo (Cons (Cons s (Cons v (Cons s' (Cons v' Nil)))) (Cons body Nil)) e = do
+  openDef <- pure (elfenList [Symbol "lam", elfenList [s], v])
+  openDef' <- pure (elfenList [Symbol "lam", elfenList [s'], v'])
+  listDef <- eval (elfenList [Symbol "lam", elfenList [Symbol "self"], elfenList [Symbol "cons", elfenList [openDef, Symbol "self"], elfenList [Symbol "cons", elfenList [openDef', Symbol "self"], Nil]]]) e
+  recursiveV <- apply yFunction [listDef]
+  rv <- apply (Primitive CF) [recursiveV]
+  rv'' <- apply (Primitive CS) [recursiveV]
+  rv' <- apply (Primitive CF) [rv'']
+  e' <- define (asSymbol s) rv e
+  e'' <- define (asSymbol s') rv' e'
+  eval body e''
+
 {-
-(fix (x X) body) -> ((lam (x) body) (Y (lam (x) X)))
-(fix (x X ... z Z) body) -> (apply (lam (x ... z) body) (Y' (lam (x ... z) X) ... (lam (x ... z) Z)))
+from https://okmij.org/ftp/Computation/fixed-point-combinators.html
+(\l -> Y (\self -> map ($ self) l)) [f, g, h]
+= Y (\self -> map ($ self) [f, g, h])
+= Y (\self -> [f self, g self, h self])
+= (\self -> [f self, g self, h self]) (Y (\self -> [f self, g self, h self]))
+= [f (Y (\self -> [f self, g self, h self])), g (Y (\self -> [f self, g self, h self])), h (Y (\self -> [f self, g self, h self]))]
 -}
 mutualFixOperator :: Value -> Environment -> M Value
 mutualFixOperator (Cons defs (Cons body Nil)) e =
   let ds' = pairUp $ unElfenList defs in
     let ds = map (\(s, v) -> (asSymbol s, v)) ds' in
       let ss = map fst ds in
-        let ods = map (\(s, v) -> (s, Cons (Symbol "lam") (Cons (elfenList $ map Symbol ss) (Cons v Nil)))) ds in
-          let odsnds = map snd ods in
-            let f ((s, v):xs) e = eval (Cons v $ elfenList odsnds) e >>= (\v' -> define s v' e >>= (\e' -> f xs e'))
-                f [] e = pure e in
-              f ods e >>= eval body
-
-{-
--- from https://okmij.org/ftp/Computation/fixed-point-combinators.html
-(\l -> Y (\self -> map ($ self) l)) [f, g, h]
-= Y (\self -> map ($ self) [f, g, h])
-= Y (\self -> [f self, g self, h self])
-= (\self -> [f self, g self, h self]) (Y (\self -> [f self, g self, h self]))
-= [f (Y (\self -> [f self, g self, h self])), g (Y (\self -> [f self, g self, h self])), h (Y (\self -> [f self, g self, h self]))]
-
-fixOperator {((* (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m)))))
-     (* 6 5))} e
-= let ds' = pairUp $ unElfenList {(* (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m)))))} in
-    let ds = map (\(s, v) -> (asSymbol s, v)) ds' in
-      let ss = map fst ds in
-        let ods = map (\(s, v) -> (s, Cons (Symbol "lam") (Cons (elfenList $ map Symbol ss) (Cons v Nil)))) ds in
-          let odsnds = map snd ods in
-            let f ((s, v):xs) e = eval (Cons v $ elfenList odsnds) e >>= (\v' -> define s v' e >>= (\e' -> f xs e'))
-                f [] e = pure e in
-              f ods e >>= eval {(* 6 5)}
-= let ds = map (\(s, v) -> (asSymbol s, v)) [({*}, {(lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m))))})] in
-      let ss = map fst ds in
-        let ods = map (\(s, v) -> (s, Cons (Symbol "lam") (Cons (elfenList $ map Symbol ss) (Cons v Nil)))) ds in
-          let odsnds = map snd ods in
-            let f ((s, v):xs) e = eval (Cons v $ elfenList odsnds) e >>= (\v' -> define s v' e >>= (\e' -> f xs e'))
-                f [] e = pure e in
-              f ods e >>= eval {(* 6 5)}
-= let ss = map fst [("*", {(lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m))))})] in
-        let ods = map (\(s, v) -> (s, Cons (Symbol "lam") (Cons (elfenList $ map Symbol ss) (Cons v Nil)))) [("*", {(lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m))))})] in
-          let odsnds = map snd ods in
-            let f ((s, v):xs) e = eval (Cons v $ elfenList odsnds) e >>= (\v' -> define s v' e >>= (\e' -> f xs e'))
-                f [] e = pure e in
-              f ods e >>= eval {(* 6 5)}
-= let ods = map (\(s, v) -> (s, Cons (Symbol "lam") (Cons (elfenList $ map Symbol ["*"]) (Cons v Nil)))) [("*", {(lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m))))})] in
-    let odsnds = map snd ods in
-      let f ((s, v):xs) e = eval (Cons v $ elfenList odsnds) e >>= (\v' -> define s v' e >>= (\e' -> f xs e'))
-          f [] e = pure e in
-        f ods e >>= eval {(* 6 5)}
-= let ods = [("*", {(lam (*) (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m)))))})] in
-    let odsnds = map snd ods in
-      let f ((s, v):xs) e = eval (Cons v $ elfenList odsnds) e >>= (\v' -> define s v' e >>= (\e' -> f xs e'))
-          f [] e = pure e in
-        f ods e >>= eval {(* 6 5)}
-= let odsnds = map snd [("*", {(lam (*) (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m)))))})] in
-    let f ((s, v):xs) e = eval (Cons v $ elfenList odsnds) e >>= (\v' -> define s v' e >>= (\e' -> f xs e'))
-        f [] e = pure e in
-      f [("*", {(lam (*) (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m)))))})] e >>= eval {(* 6 5)}
-= let odsnds = [{(lam (*) (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m)))))}] in
-    let f ((s, v):xs) e = eval (Cons v $ elfenList odsnds) e >>= (\v' -> define s v' e >>= (\e' -> f xs e'))
-        f [] e = pure e in
-      f [("*", {(lam (*) (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m)))))})] e >>= eval {(* 6 5)}
-= let f ((s, v):xs) e = eval (Cons v $ elfenList [{(lam (*) (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m)))))}]) e >>= (\v' -> define s v' e >>= (\e' -> f xs e'))
-      f [] e = pure e in
-    f [("*", {(lam (*) (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m)))))})] e >>= eval {(* 6 5)}
-= let f ((s, v):xs) e = eval (Cons v $ elfenList [{(lam (*) (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m)))))}]) e >>= (\v' -> define s v' e >>= (\e' -> f xs e'))
-      f [] e = pure e in
-    (eval (Cons {(lam (*) (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m)))))} $ elfenList [{(lam (*) (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m)))))}]) e >>= (\v' -> define "*" v' e >>= (\e' -> f [] e'))) >>= eval {(* 6 5)}
-= let f ((s, v):xs) e = eval (Cons v $ elfenList [{(lam (*) (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m)))))}]) e >>= (\v' -> define s v' e >>= (\e' -> f xs e'))
-      f [] e = pure e in
-    (eval (Cons {(lam (*) (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m)))))} $ elfenList [{(lam (*) (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m)))))}]) e >>= (\v' -> define "*" v' e >>= (\e' -> pure e'))) >>= eval {(* 6 5)}
-= (eval (Cons {(lam (*) (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m)))))} $ elfenList [{(lam (*) (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m)))))}]) e >>= (\v' -> define "*" v' e >>= (\e' -> pure e'))) >>= eval {(* 6 5)}
-= (eval {((lam (*) (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m))))) (lam (*) (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m))))))} e >>= (\v' -> define "*" v' e >>= (\e' -> pure e'))) >>= eval {(* 6 5)}
-= (eval {((lam (*) (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m))))) (lam (*) (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m))))))} e >>= (\v' -> define "*" v' e >>= (\e' -> pure e'))) >>= eval {(* 6 5)}
-
--}
+        let openDefs = map (\(s, v) -> (s, elfenList [(Symbol "lam"), (elfenList $ map Symbol ss), v])) ds in
+          let f ((s, d):xs) = do
+                r <- eval d e
+                xs' <- f xs
+                pure ((s, r) : xs')
+              f [] = pure [] in
+              let g = mu (eval (elfenList [Symbol "lam", elfenList [Symbol "self"], Nil]) Map.empty) in
+                do
+                  eval body e
 
 unElfenList :: Value -> [Value]
 unElfenList Nil = []
@@ -253,11 +211,18 @@ initialState = mu (defineList initialDefinitions Map.empty)
           ("eqn", Primitive EQN),
           ("t", Symbol "t"),
           ("nil", Nil),
-          ("Y", yFunction)]
+          ("Y", yFunction),
+          ("cons", Primitive CONS),
+          ("cf", Primitive CF),
+          ("cs", Primitive CS),
+          ("id", idFunction)]
 
 yFunction :: Value
 yFunction = let yPart = elfenList [Symbol "lam", elfenList [Symbol "x"], elfenList [Symbol "f", elfenList [Symbol "x", Symbol "x"]]] in
   mu (eval (elfenList [Symbol "lam", elfenList [Symbol "f"], elfenList [yPart, yPart]]) (Map.empty))
+
+idFunction :: Value
+idFunction = Abstraction (Symbol "x") ["x"] Map.empty
 
 evalSequential :: [Value] -> Environment -> M [Value]
 evalSequential [] _ = pure []
