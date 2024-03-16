@@ -18,14 +18,13 @@
                           nil))))))
  10)
 
-'"(letrec2 (odd (lam (n) (if (eqn n 1) t (if (even (+ n -1))  nil t)))
-          even (lam (n) (if (eqn n 0) t (if (odd (+ n -1))  nil t))))
+(letrec2 (odd (lam (n) (if (eqn n 0) nil (even (+ n -1))))
+          even (lam (n) (if (eqn n 0) t (odd (+ n -1)))))
      (even 10))
 
 (letrec (* (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m)))))
-     (* 5 6))
+     (* 4 5))
 
-(letrec (odd (lam (n) (if (eqn n 1) t (if (even (+ n -1))  nil t)))
-          even (lam (n) (if (eqn n 0) t (if (odd (+ n -1))  nil t))))
+(letrec (odd (lam (n) (if (eqn n 0) nil (even (+ n -1))))
+          even (lam (n) (if (eqn n 0) t (odd (+ n -1)))))
      (even 10))
-"

@@ -155,9 +155,9 @@ fixOperator (Cons (Cons s (Cons v Nil)) (Cons body Nil)) e = do
 
 fixOpTwo :: Value -> Environment -> M Value
 fixOpTwo (Cons (Cons s (Cons v (Cons s' (Cons v' Nil)))) (Cons body Nil)) e = do
-  openDef <- pure (elfenList [Symbol "lam", elfenList [s], v])
-  openDef' <- pure (elfenList [Symbol "lam", elfenList [s'], v'])
-  listDef <- eval (elfenList [Symbol "lam", elfenList [Symbol "self"], elfenList [Symbol "cons", elfenList [openDef, Symbol "self"], elfenList [Symbol "cons", elfenList [openDef', Symbol "self"], Nil]]]) e
+  openDef <- pure (elfenList [Symbol "lam", elfenList [s, s'], v])
+  openDef' <- pure (elfenList [Symbol "lam", elfenList [s, s'], v'])
+  listDef <- eval (elfenList [Symbol "lam", elfenList [Symbol "self"], elfenList [Symbol "cons", elfenList [openDef, elfenIndexer 0 (Symbol "self"), elfenIndexer 1 (Symbol "self")], elfenList [Symbol "cons", elfenList [openDef', elfenIndexer 0 (Symbol "self"), elfenIndexer 1 (Symbol "self")], Nil]]]) e
   recursiveV <- apply yFunction [listDef]
   rv <- apply (Primitive CF) [recursiveV]
   rv'' <- apply (Primitive CS) [recursiveV]
@@ -165,6 +165,11 @@ fixOpTwo (Cons (Cons s (Cons v (Cons s' (Cons v' Nil)))) (Cons body Nil)) e = do
   e' <- define (asSymbol s) rv e
   e'' <- define (asSymbol s') rv' e'
   eval body e''
+
+elfenIndexer :: Integer -> Value -> Value
+elfenIndexer n v = elfenList [Symbol "cf", f n v]
+  where f 0 v = v
+        f n v = elfenList [Symbol "cs", f (n-1) v]
 
 {-
 from https://okmij.org/ftp/Computation/fixed-point-combinators.html
