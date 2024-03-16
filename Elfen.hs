@@ -141,15 +141,23 @@ specialOperators = Map.fromList
                    [("quote", (\(Cons v _) _ -> pure v)),
                     ("lam", (\(Cons params (Cons body Nil)) e -> pure (Abstraction body (map asSymbol $ unElfenList params) e))),
                     ("if", (\(Cons test (Cons true (Cons false Nil))) e -> eval test e >>= (\r -> if r == Nil then eval false e else eval true e))),
-                    ("fix", fixOperator),
+                    ("letrec1", fixOperator),
+                    ("letrec", mutualFixOperator),
                     ("apply", (\(Cons f (Cons xs Nil)) e -> eval f e >>= \f' -> evalList xs e >>= \xs' -> apply f' xs'))]
+
+fixOperator :: Value -> Environment -> M Value
+fixOperator (Cons (Cons s (Cons v Nil)) (Cons body Nil)) e = do
+  openDef <- eval (elfenList [Symbol "lam", elfenList [s], v]) e
+  recursiveV <- apply yFunction [openDef]
+  e' <- define (asSymbol s) recursiveV e
+  eval body e'
 
 {-
 (fix (x X) body) -> ((lam (x) body) (Y (lam (x) X)))
 (fix (x X ... z Z) body) -> (apply (lam (x ... z) body) (Y' (lam (x ... z) X) ... (lam (x ... z) Z)))
 -}
-fixOperator :: Value -> Environment -> M Value
-fixOperator (Cons defs (Cons body Nil)) e =
+mutualFixOperator :: Value -> Environment -> M Value
+mutualFixOperator (Cons defs (Cons body Nil)) e =
   let ds' = pairUp $ unElfenList defs in
     let ds = map (\(s, v) -> (asSymbol s, v)) ds' in
       let ss = map fst ds in
@@ -244,7 +252,12 @@ initialState = mu (defineList initialDefinitions Map.empty)
          [("+", Primitive PLUS),
           ("eqn", Primitive EQN),
           ("t", Symbol "t"),
-          ("nil", Nil)]
+          ("nil", Nil),
+          ("Y", yFunction)]
+
+yFunction :: Value
+yFunction = let yPart = elfenList [Symbol "lam", elfenList [Symbol "x"], elfenList [Symbol "f", elfenList [Symbol "x", Symbol "x"]]] in
+  mu (eval (elfenList [Symbol "lam", elfenList [Symbol "f"], elfenList [yPart, yPart]]) (Map.empty))
 
 evalSequential :: [Value] -> Environment -> M [Value]
 evalSequential [] _ = pure []
