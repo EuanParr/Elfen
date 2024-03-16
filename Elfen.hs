@@ -3,6 +3,7 @@ module Elfen where
 import qualified Data.Map as Map
 import qualified Control.Monad as Monad
 import qualified Data.Char as Char
+import qualified Data.Foldable as Foldable
 import qualified Data.Maybe as Maybe
 import qualified System.IO
 
@@ -37,7 +38,7 @@ instance Show Value where
   show c@(Cons _ _) = showList' c
   show Nil = showList' Nil
   show (Constant c) = show c
-  show (Abstraction _ _ _) = "<Abstraction>"
+  show (Abstraction v ss e) = "<Abstraction " ++ show ss ++ " " ++ show v ++ ">"  
   show (Primitive p) = "<Primitive " ++ show p ++ ">"
 
 showList' :: Value -> String
@@ -106,10 +107,10 @@ evalList _ _ = error "Evaluating a non-list as a list"
 
 apply :: Value -> [Value] -> M Value
 apply (Primitive x) ys = applyPrimitive x ys
-apply (Abstraction x ss e) ys = (defineList (matchingZip ss ys) e) >>= \e' -> eval x e'
+apply a@(Abstraction x ss e) ys = (defineList (matchingZip ss ys) e) >>= \e' -> eval x e'
   where matchingZip [] [] = []
         matchingZip (x':xs') (y':ys') = (x', y') : matchingZip xs' ys'
-        matchingZip _ _ = error "different number of arguments and parameters"
+        matchingZip _ _ = error $ "different number of arguments and parameters: " ++ show a ++ ", " ++ show ys
 apply _ _ = error "Applying a non-applicable value"
 
 -- give a symbol a new value binding
@@ -182,17 +183,15 @@ from https://okmij.org/ftp/Computation/fixed-point-combinators.html
 mutualFixOperator :: Value -> Environment -> M Value
 mutualFixOperator (Cons defs (Cons body Nil)) e =
   let ds' = pairUp $ unElfenList defs in
-    let ds = map (\(s, v) -> (asSymbol s, v)) ds' in
-      let ss = map fst ds in
-        let openDefs = map (\(s, v) -> (s, elfenList [(Symbol "lam"), (elfenList $ map Symbol ss), v])) ds in
-          let f ((s, d):xs) = do
-                r <- eval d e
-                xs' <- f xs
-                pure ((s, r) : xs')
-              f [] = pure [] in
-              let g = mu (eval (elfenList [Symbol "lam", elfenList [Symbol "self"], Nil]) Map.empty) in
-                do
-                  eval body e
+    let ss = map fst ds' in
+      let openDefs = zipWith (\(s, v) n -> (n, s, elfenList [(Symbol "lam"), (elfenList ss), v])) ds' [0..] in
+        let aps = map (\(n, s, v) -> elfenList (v : map (\n' -> elfenIndexer n' (Symbol "self")) [0..(toInteger $ length ss - 1)])) openDefs in do
+          listDef <- eval (elfenList [Symbol "lam", elfenList [Symbol "self"], elfenListMaker aps]) e
+          recursiveV <- apply yFunction [listDef]
+          results <- mapM (\(n, _, _) -> Foldable.foldrM (\_ v -> apply (Primitive CS) [v]) recursiveV [1..n] >>= (\v -> apply (Primitive CF) [v])) openDefs
+          e' <- defineList (zip (map asSymbol ss) results) e
+          eval body e'
+          --pure $ elfenList results
 
 unElfenList :: Value -> [Value]
 unElfenList Nil = []
@@ -201,6 +200,10 @@ unElfenList (Cons x xs) = x: unElfenList xs
 elfenList :: [Value] -> Value
 elfenList (v:vs) = Cons v $ elfenList vs
 elfenList [] = Nil
+
+elfenListMaker :: [Value] -> Value
+elfenListMaker (v:vs) = elfenList [Symbol "cons", v, elfenListMaker vs]
+elfenListMaker [] = Nil
 
 pairUp :: [a] -> [(a, a)]
 pairUp (x:y:xs) = (x,y) : pairUp xs
