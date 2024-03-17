@@ -6,6 +6,7 @@ import qualified Data.Char as Char
 import qualified Data.Foldable as Foldable
 import qualified Data.Maybe as Maybe
 import qualified System.IO
+import qualified System.Environment
 
 {-
 Lexical/static scope seems a good idea but Lisp complicates things
@@ -308,12 +309,11 @@ parse ts = case parseVal ts of
 
 
 
-processFile :: System.IO.Handle -> IO ()
-processFile h = do
-  ts <- System.IO.hGetContents h
+processFile :: String -> IO ()
+processFile ts =
   putStrLn $ unlines $ map show $ enterEval $ Maybe.fromMaybe [Nil] $ parse $ tokenise ts
 
 main :: IO ()
 main = do
-  i <- getLine
-  System.IO.withFile i System.IO.ReadMode processFile
+  args <- System.Environment.getArgs
+  if args == [] then {-getContents >>= processFile-} putStrLn "Error: no filename given." else System.IO.withFile (head args) System.IO.ReadMode (\h -> System.IO.hGetContents h >>= processFile)
