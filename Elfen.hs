@@ -125,7 +125,7 @@ defineList ((x, y):zs) e = do
   defineList zs e'
 
 data Primitive = CONS | CF | CS
- | PLUS | MINUS | EQN
+ | PLUS | MINUS | EQN | EQS | CONSP
  | Y deriving (Eq, Show)
 
 applyPrimitive :: Primitive -> [Value] -> M Value
@@ -135,6 +135,9 @@ applyPrimitive CS [Cons _ y] = pure $ y
 applyPrimitive PLUS [Constant (Integer x), Constant (Integer y)] = pure $ Constant $ Integer (x + y)
 applyPrimitive MINUS [Constant (Integer x), Constant (Integer y)] = pure $ Constant $ Integer (x - y)
 applyPrimitive EQN [Constant (Integer x), Constant (Integer y)] = pure $ if x == y then Symbol "t" else Nil
+applyPrimitive EQS [Symbol x, Symbol y] = pure $ if x == y then Symbol "t" else Nil
+applyPrimitive CONSP [Cons _ _] = pure $ Symbol "t"
+applyPrimitive CONSP _ = pure $ Nil
 applyPrimitive o vs = error $ "Wrong argument type (s) for primitive operator: " ++ show o ++ " of " ++ show vs
  
 {- I pick out special operators at symbol level rather than value level - it will not be possible to evaluate anything but some predetermined symbols into special operators, which is in accordance with typical Lisps and will make checking easier (it's hard to imagine what type a special operator might have). -}
@@ -218,6 +221,8 @@ initialState = mu (defineList initialDefinitions Map.empty)
  where initialDefinitions =
          [("+", Primitive PLUS),
           ("eqn", Primitive EQN),
+          ("eqs", Primitive EQS),
+          ("consp", Primitive CONSP),
           ("t", Symbol "t"),
           ("nil", Nil),
           ("Y", yFunction),
