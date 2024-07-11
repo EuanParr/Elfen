@@ -83,6 +83,12 @@ return a >>= k
 bind :: Symbol -> Value -> Environment -> Environment
 bind s v e = Map.insert s v e
 
+bindForbidShadow :: Symbol -> Value -> Environment -> Environment
+bindForbidShadow s v e =
+  if Map.member s e
+  then error ("Forbidden redefining of symbol: " ++ show s)
+  else Map.insert s v e
+
 eval :: Value -> Environment -> M Value
 eval (Symbol s) e = pure $ (Map.findWithDefault) (error $ "Symbol has no definition: " ++ show s) s e
 eval (Cons x y) e = evalApplication x y e
@@ -117,6 +123,9 @@ apply _ _ = error "Applying a non-applicable value"
 -- give a symbol a new value binding
 define :: Symbol -> Value -> Environment -> M Environment
 define s v e = pure $ bind s v e
+
+defineForbidShadow :: Symbol -> Value -> Environment -> M Environment
+defineForbidShadow s v e = pure $ bindForbidShadow s v e
 
 defineList :: [(Symbol, Value)] -> Environment -> M Environment
 defineList [] e = pure e
@@ -238,16 +247,21 @@ yFunction = let yPart = elfenList [Symbol "lam", elfenList [Symbol "x"], elfenLi
 idFunction :: Value
 idFunction = Abstraction (Symbol "x") ["x"] Map.empty
 
-evalSequential :: [Value] -> Environment -> M [Value]
-evalSequential [] _ = pure []
-evalSequential (x:y) e = do
-  x' <- eval x e
-  y' <- evalSequential y e
+evalTopLevelSexp :: Value -> Environment -> M (Value, Environment)
+evalTopLevelSexp (Cons (Symbol "def") (Cons (Symbol x) (Cons exp Nil))) env =
+  eval exp env >>= \v -> defineForbidShadow x v env >>= \env' -> pure (v, env')
+evalTopLevelSexp exp env = eval exp env >>= \v -> pure (v, env)
+
+evalSexpStream :: [Value] -> Environment -> M [Value]
+evalSexpStream [] _ = pure []
+evalSexpStream (x:y) env = do
+  (x', env') <- evalTopLevelSexp x env
+  y' <- evalSexpStream y env'
   pure (x' : y')
 
 enterEval :: [Value] -> [Value]
 enterEval vs = let initialEnv = initialState in
-  mu (evalSequential vs initialEnv) 
+  mu (evalSexpStream vs initialEnv) 
 
 data Token = LeftParenthesis | RightParenthesis
   | SymbolLiteral String
