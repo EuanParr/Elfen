@@ -1,0 +1,9 @@
+(def t 't)
+
+(def id (lam (x) x))
+
+(def y (lam (f) ((lam (x) (f (x x)))
+                 (lam (x) (f (x x))))))
+
+(def map
+     (letrec (map (lam (f xs) (if xs (cons (f (cf xs)) (map f (cs xs))) ()))) map))

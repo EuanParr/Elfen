@@ -232,36 +232,26 @@ initialState = mu (defineList initialDefinitions Map.empty)
           ("eqn", Primitive EQN),
           ("eqs", Primitive EQS),
           ("consp", Primitive CONSP),
-          ("t", Symbol "t"),
           ("nil", Nil),
-          ("Y", yFunction),
           ("cons", Primitive CONS),
           ("cf", Primitive CF),
-          ("cs", Primitive CS),
-          ("id", idFunction)]
+          ("cs", Primitive CS)]
 
 yFunction :: Value
 yFunction = let yPart = elfenList [Symbol "lam", elfenList [Symbol "x"], elfenList [Symbol "f", elfenList [Symbol "x", Symbol "x"]]] in
   mu (eval (elfenList [Symbol "lam", elfenList [Symbol "f"], elfenList [yPart, yPart]]) (Map.empty))
-
-idFunction :: Value
-idFunction = Abstraction (Symbol "x") ["x"] Map.empty
 
 evalTopLevelSexp :: Value -> Environment -> M (Value, Environment)
 evalTopLevelSexp (Cons (Symbol "def") (Cons (Symbol x) (Cons exp Nil))) env =
   eval exp env >>= \v -> defineForbidShadow x v env >>= \env' -> pure (v, env')
 evalTopLevelSexp exp env = eval exp env >>= \v -> pure (v, env)
 
-evalSexpStream :: [Value] -> Environment -> M [Value]
-evalSexpStream [] _ = pure []
+evalSexpStream :: [Value] -> Environment -> M ([Value], Environment)
+evalSexpStream [] env = pure ([], env)
 evalSexpStream (x:y) env = do
   (x', env') <- evalTopLevelSexp x env
-  y' <- evalSexpStream y env'
-  pure (x' : y')
-
-enterEval :: [Value] -> [Value]
-enterEval vs = let initialEnv = initialState in
-  mu (evalSexpStream vs initialEnv) 
+  (y', env'') <- evalSexpStream y env'
+  pure (x' : y', env'')
 
 data Token = LeftParenthesis | RightParenthesis
   | SymbolLiteral String
@@ -328,11 +318,17 @@ parse ts = case parseVal ts of
 
 
 
-processFile :: String -> IO ()
-processFile ts =
-  putStrLn $ unlines $ map show $ enterEval $ Maybe.fromMaybe [Nil] $ parse $ tokenise ts
+processFile :: String -> Environment -> IO (String, Environment)
+processFile f env =
+  System.IO.readFile f >>= \text -> let (vals, env') = mu $ evalSexpStream (Maybe.fromMaybe [Nil] $ parse $ tokenise text) env in pure (unlines $ map show vals, env')
+
+-- for now, output all resulting values from the last file given
+evalFiles :: [String] -> Environment -> IO ()
+evalFiles [] env = putStrLn "Error: unreachable state, should have prelude"
+evalFiles [x] env = processFile x env >>= putStrLn . fst
+evalFiles (x:xs) env = processFile x env >>= \(_, env') -> evalFiles xs env'
 
 main :: IO ()
 main = do
   args <- System.Environment.getArgs
-  if args == [] then {-getContents >>= processFile-} putStrLn "Error: no filename given." else System.IO.withFile (head args) System.IO.ReadMode (\h -> System.IO.hGetContents h >>= processFile)
+  if args == [] then {-getContents >>= processFile-} putStrLn "Error: no filename given." else evalFiles ("prelude.lfn" : args) initialState

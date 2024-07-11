@@ -1,8 +1,5 @@
 (cf '"The logic and proof systems here are from Ted Sider's Logic for Philosophy")
 
-(def map
-     (letrec (map (lam (f xs) (if xs (cons (f (cf xs)) (map f (cs xs))) ()))) map))
-
 (def =
      (letrec (= (lam (x y)
                      (if

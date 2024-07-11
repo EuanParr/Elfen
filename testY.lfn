@@ -3,11 +3,11 @@
   (lam (*) (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m))))))
  1 2)
 
-((Y (lam (*) (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m)))))) 2 3)
+((y (lam (*) (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m)))))) 2 3)
 
 (letrec1 (* (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m))))) (* 3 4))
 
-((cf (cs (Y (lam (self) (cons
+((cf (cs (y (lam (self) (cons
                          ((lam (odd even) (lam (n) (if (eqn n 0) nil (even (+ n -1)))))
                           (cf self)
                           (cf (cs self)))
