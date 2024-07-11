@@ -1,39 +1,43 @@
-(+ 1 1)
-
 (cf '"The logic and proof systems here are from Ted Sider's Logic for Philosophy")
 
-(letrec
+(def map
+     (letrec (map (lam (f xs) (if xs (cons (f (cf xs)) (map f (cs xs))) ()))) map))
+
+(def =
+     (letrec (= (lam (x y)
+                     (if
+                      x
+                      (if
+                       (consp x)
+                       (if (consp y) (if (= (cf x) (cf y)) (= (cs x) (cs y)) ()) ())
+                       (if (consp y) () (eqs x y)))
+                      (if y () t)))) =))
+
+(def checkPLProofLine (letrec (checkPLProofLine (lam (env lineNo line)
+                                (if
+                                 (= (cf (cs line)) 'PL1)
+                                 (if
+                                  (= (cf (cf line)) '\to)
+                                  (if
+                                   (= (cf (cf (cs (cs (cf line))))) '\to)
+                                   (= (cf (cs (cf line))) (cf (cs (cs (cf (cs (cs (cf line))))))))
+                                   ())
+                                  ())
+                                 ()))) checkPLProofLine))
+
+(def checkPLProof (letrec
     (checkPLProof (lam (lines) (checkPLProof' () 1 lines))
-     checkPLProof' (lam (env lineNo lines)
-     (if
-       lines
-       (if (checkPLProofLine env lineNo (cf lines))
-           (checkPLProof' (cons (cf (cf lines)) env) (+ lineNo 1) (cs lines))
-           (checkPLProof' env lineNo (cs lines)))
-       env))
-     checkPLProofLine (lam (env lineNo line)
-                           (if
-                            (= (cf (cs line)) 'PL1)
-                            (if
-                             (= (cf (cf line)) '\to)
-                             (if
-                              (= (cf (cf (cs (cs (cf line))))) '\to)
-                              (= (cf (cs (cf line))) (cf (cs (cs (cf (cs (cs (cf line))))))))
-                              ())
-                             ())
-                            ()))
-     = (lam (x y)
-            (if
-             x
-             (if
-              (consp x)
-              (if (consp y) (if (= (cf x) (cf y)) (= (cs x) (cs y)) ()) ())
-              (if (consp y) () (eqs x y)))
-             (if y () t)))
-     map (lam (f xs) (if xs (cons (f (cf xs)) (map f (cs xs))) ()))
-  )
-  (map checkPLProof '(()
+                  checkPLProof' (lam (env lineNo lines)
+                  (if
+                  lines
+                  (if (checkPLProofLine env lineNo (cf lines))
+                  (checkPLProof' (cons (cf (cf lines)) env) (+ lineNo 1) (cs lines))
+                  (checkPLProof' env lineNo (cs lines)))
+                  env)))
+          checkPLProof))
+
+(map checkPLProof '(()
                       ((a a') (b b') (c c'))
                       (((\to P (\to (\to P P) P)) PL1)
                        ((\to (~ Foo) (\to Foo' (~ Foo))) PL1))
-                      )))
+                      ))

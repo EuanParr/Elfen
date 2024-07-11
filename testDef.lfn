@@ -1,3 +1,5 @@
+(+ 1 1)
+
 (def succ (lam (x) (+ 1 x)))
 
 (succ 5)
