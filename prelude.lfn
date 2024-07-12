@@ -10,7 +10,8 @@
 
 (deflam id (x) x)
 
+(deflam list xs xs)
+
 (def map
      (letrec (map (lam (f xs) (if xs (cons (f (cf xs)) (map f (cs xs))) ()))) map))
 
-(deflam list xs xs)

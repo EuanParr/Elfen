@@ -137,7 +137,7 @@ defineList ((x, y):zs) e = do
 
 data Primitive = CONS | CF | CS
  | PLUS | MINUS | EQN | EQS | CONSP
- | Y deriving (Eq, Show)
+ | STRTOSYM | SYMTOSTR deriving (Eq, Show)
 
 applyPrimitive :: Primitive -> [Value] -> M Value
 applyPrimitive CONS [x,y] = pure $ Cons x y
@@ -149,7 +149,23 @@ applyPrimitive EQN [Constant (Integer x), Constant (Integer y)] = pure $ if x ==
 applyPrimitive EQS [Symbol x, Symbol y] = pure $ if x == y then Symbol "t" else Nil
 applyPrimitive CONSP [Cons _ _] = pure $ Symbol "t"
 applyPrimitive CONSP _ = pure $ Nil
+applyPrimitive STRTOSYM [x] = pure $ Symbol $ map (\(Constant (Character c)) -> c) $ unElfenList x
+applyPrimitive SYMTOSTR [Symbol x] = pure $ elfenString x
 applyPrimitive o vs = error $ "Wrong argument type (s) for primitive operator: " ++ show o ++ " of " ++ show vs
+
+initialState :: Environment
+initialState = mu (defineList initialDefinitions Map.empty)
+ where initialDefinitions =
+         [("+", Primitive PLUS),
+          ("eqn", Primitive EQN),
+          ("eqs", Primitive EQS),
+          ("consp", Primitive CONSP),
+          ("nil", Nil),
+          ("cons", Primitive CONS),
+          ("cf", Primitive CF),
+          ("cs", Primitive CS),
+          ("str-to-sym", Primitive STRTOSYM),
+          ("sym-to-str", Primitive SYMTOSTR)]
  
 {- I pick out special operators at symbol level rather than value level - it will not be possible to evaluate anything but some predetermined symbols into special operators, which is in accordance with typical Lisps and will make checking easier (it's hard to imagine what type a special operator might have). -}
 specialOperators :: Map.Map Symbol (Value -> Environment -> M Value)
@@ -230,18 +246,6 @@ pairUp [] = []
 
 asSymbol :: Value -> Symbol
 asSymbol (Symbol s) = s
-
-initialState :: Environment
-initialState = mu (defineList initialDefinitions Map.empty)
- where initialDefinitions =
-         [("+", Primitive PLUS),
-          ("eqn", Primitive EQN),
-          ("eqs", Primitive EQS),
-          ("consp", Primitive CONSP),
-          ("nil", Nil),
-          ("cons", Primitive CONS),
-          ("cf", Primitive CF),
-          ("cs", Primitive CS)]
 
 yFunction :: Value
 yFunction = let yPart = elfenList [Symbol "lam", elfenList [Symbol "x"], elfenList [Symbol "f", elfenList [Symbol "x", Symbol "x"]]] in

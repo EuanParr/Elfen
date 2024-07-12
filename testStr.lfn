@@ -1,0 +1,5 @@
+'"hello world"
+
+(str-to-sym '"foo")
+
+(sym-to-str 'bar)
