@@ -1,4 +1,4 @@
-(cf '"The logic and proof systems here are from Ted Sider's Logic for Philosophy")
+; The logic and proof systems here are from Ted Sider's Logic for Philosophy
 
 (def =
      (letrec (= (lam (x y)

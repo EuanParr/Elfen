@@ -291,6 +291,10 @@ data Token = LeftParenthesis | RightParenthesis
 
 tokenise :: String -> [Token]
 tokenise [] = []
+tokenise (';':cs) = eatComment cs
+  where eatComment ('\n':cs') = tokenise cs'
+        eatComment (_:cs') = eatComment cs'
+        eatComment [] = tokenise []
 tokenise ('(':cs) = LeftParenthesis : tokenise cs
 tokenise (')':cs) = RightParenthesis : tokenise cs
 tokenise ('\'':cs) = Apostrophe : tokenise cs
