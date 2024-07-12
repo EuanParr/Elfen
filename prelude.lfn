@@ -1,5 +1,7 @@
 (def t 't)
 
+(def nil '())
+
 (def deflam-maker (lam (name args body)
                        (cons 'def (cons name (cons (cons 'lam (cons args (cons body nil))) nil)))))
 

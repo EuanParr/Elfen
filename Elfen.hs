@@ -136,8 +136,8 @@ defineList ((x, y):zs) e = do
   defineList zs e'
 
 data Primitive = CONS | CF | CS
- | PLUS | MINUS | EQN | EQS | CONSP
- | STRTOSYM | SYMTOSTR deriving (Eq, Show)
+ | PLUS | MINUS | EQC | EQS | CONSP
+ | SYMP | STRTOSYM | SYMTOSTR deriving (Eq, Show)
 
 applyPrimitive :: Primitive -> [Value] -> M Value
 applyPrimitive CONS [x,y] = pure $ Cons x y
@@ -145,10 +145,13 @@ applyPrimitive CF [Cons x _] = pure $ x
 applyPrimitive CS [Cons _ y] = pure $ y
 applyPrimitive PLUS [Constant (Integer x), Constant (Integer y)] = pure $ Constant $ Integer (x + y)
 applyPrimitive MINUS [Constant (Integer x), Constant (Integer y)] = pure $ Constant $ Integer (x - y)
-applyPrimitive EQN [Constant (Integer x), Constant (Integer y)] = pure $ if x == y then Symbol "t" else Nil
+applyPrimitive EQC [Constant x, Constant y] = pure $ if x == y then Symbol "t" else Nil
 applyPrimitive EQS [Symbol x, Symbol y] = pure $ if x == y then Symbol "t" else Nil
 applyPrimitive CONSP [Cons _ _] = pure $ Symbol "t"
 applyPrimitive CONSP _ = pure $ Nil
+applyPrimitive SYMP [Symbol _] = pure $ Symbol "t"
+applyPrimitive SYMP [Nil] = pure $ Symbol "t"
+applyPrimitive SYMP _ = pure $ Nil
 applyPrimitive STRTOSYM [x] = pure $ Symbol $ map (\(Constant (Character c)) -> c) $ unElfenList x
 applyPrimitive SYMTOSTR [Symbol x] = pure $ elfenString x
 applyPrimitive o vs = error $ "Wrong argument type (s) for primitive operator: " ++ show o ++ " of " ++ show vs
@@ -157,13 +160,13 @@ initialState :: Environment
 initialState = mu (defineList initialDefinitions Map.empty)
  where initialDefinitions =
          [("+", Primitive PLUS),
-          ("eqn", Primitive EQN),
+          ("eqc", Primitive EQC),
           ("eqs", Primitive EQS),
           ("consp", Primitive CONSP),
-          ("nil", Nil),
           ("cons", Primitive CONS),
           ("cf", Primitive CF),
           ("cs", Primitive CS),
+          ("symp", Primitive SYMP),
           ("str-to-sym", Primitive STRTOSYM),
           ("sym-to-str", Primitive SYMTOSTR)]
  
