@@ -118,7 +118,7 @@ apply a@(Abstraction x ss e) ys = (defineList (matchingZip ss ys) e) >>= \e' -> 
   where matchingZip [] [] = []
         matchingZip (x':xs') (y':ys') = (x', y') : matchingZip xs' ys'
         matchingZip _ _ = error $ "different number of arguments and parameters: " ++ show a ++ ", " ++ show ys
-apply _ _ = error "Applying a non-applicable value"
+apply a ys = error $ "Applying a non-applicable value " ++ show a ++ " to " ++ show ys
 
 -- give a symbol a new value binding
 define :: Symbol -> Value -> Environment -> M Environment
@@ -241,17 +241,47 @@ yFunction :: Value
 yFunction = let yPart = elfenList [Symbol "lam", elfenList [Symbol "x"], elfenList [Symbol "f", elfenList [Symbol "x", Symbol "x"]]] in
   mu (eval (elfenList [Symbol "lam", elfenList [Symbol "f"], elfenList [yPart, yPart]]) (Map.empty))
 
+elfenMap :: (Value -> Value) -> Value -> Value
+elfenMap f (Cons x y) = Cons (f x) (elfenMap f y)
+elfenMap f Nil = Nil
+
+elfenMapM :: (Value -> M Value) -> Value -> M Value
+elfenMapM f (Cons x xs) = f x >>= \z -> elfenMapM f xs >>= \zs -> pure $ Cons z zs
+elfenMapM f Nil = pure Nil
+
 evalTopLevelSexp :: Value -> Environment -> M (Value, Environment)
 evalTopLevelSexp (Cons (Symbol "def") (Cons (Symbol x) (Cons exp Nil))) env =
   eval exp env >>= \v -> defineForbidShadow x v env >>= \env' -> pure (v, env')
 evalTopLevelSexp exp env = eval exp env >>= \v -> pure (v, env)
 
-evalSexpStream :: [Value] -> Environment -> M ([Value], Environment)
-evalSexpStream [] env = pure ([], env)
-evalSexpStream (x:y) env = do
-  (x', env') <- evalTopLevelSexp x env
-  (y', env'') <- evalSexpStream y env'
-  pure (x' : y', env'')
+macroExpandOnce :: Value -> Environment -> M (Value, Bool)
+macroExpandOnce v@(Cons (Symbol x) y) menv =
+  case Map.lookup x menv of
+    Just f -> apply f (unElfenList y) >>= \v' -> pure (v', True)
+    Nothing -> pure (v, False)
+macroExpandOnce v menv = pure (v, False)
+
+-- (note - this uses an eager reduction strategy and macro reduction is not confluent)
+macroNormalise :: Value -> Environment -> M Value
+macroNormalise v@(Cons _ _) menv = elfenMapM (flip macroNormalise menv) v >>=
+  \z -> macroExpandOnce z menv >>=
+  \(v', changed) -> if changed then macroNormalise v' menv else pure v'
+macroNormalise v menv = pure v
+
+-- apply macros then process any directives or delegate to evalTopLevelSexp
+execTopLevelSexp :: Value -> Environment -> Environment -> M (Value, Environment, Environment)
+execTopLevelSexp exp env menv = macroNormalise exp menv >>= \exp' ->
+  case exp' of
+    (Cons (Symbol "macro") (Cons (Symbol x) (Cons body Nil))) ->
+      eval body env >>= \body' -> define x body' menv >>= \menv' -> pure (body', env, menv')
+    _ -> evalTopLevelSexp exp' env >>= \(exp'', env') -> pure (exp'', env', menv)
+
+execSexpStream :: [Value] -> Environment -> Environment -> M ([Value], Environment, Environment)
+execSexpStream [] env menv = pure ([], env, menv)
+execSexpStream (x:y) env menv = do
+  (x', env', menv') <- execTopLevelSexp x env menv
+  (y', env'', menv'') <- execSexpStream y env' menv'
+  pure (x' : y', env'', menv'')
 
 data Token = LeftParenthesis | RightParenthesis
   | SymbolLiteral String
@@ -318,17 +348,17 @@ parse ts = case parseVal ts of
 
 
 
-processFile :: String -> Environment -> IO (String, Environment)
-processFile f env =
-  System.IO.readFile f >>= \text -> let (vals, env') = mu $ evalSexpStream (Maybe.fromMaybe [Nil] $ parse $ tokenise text) env in pure (unlines $ map show vals, env')
+processFile :: String -> Environment -> Environment -> IO (String, Environment, Environment)
+processFile f env menv =
+  System.IO.readFile f >>= \text -> let (vals, env', menv') = mu $ execSexpStream (Maybe.fromMaybe [Nil] $ parse $ tokenise text) env menv in pure (unlines $ map show vals, env', menv')
 
 -- for now, output all resulting values from the last file given
-evalFiles :: [String] -> Environment -> IO ()
-evalFiles [] env = putStrLn "Error: unreachable state, should have prelude"
-evalFiles [x] env = processFile x env >>= putStrLn . fst
-evalFiles (x:xs) env = processFile x env >>= \(_, env') -> evalFiles xs env'
+evalFiles :: [String] -> Environment -> Environment -> IO ()
+evalFiles [] env menv = putStrLn "Error: unreachable state, should have prelude"
+evalFiles [x] env menv = processFile x env menv >>= \(exp', _, _) -> putStrLn exp'
+evalFiles (x:xs) env menv = processFile x env menv >>= \(_, env', menv') -> evalFiles xs env' menv'
 
 main :: IO ()
 main = do
   args <- System.Environment.getArgs
-  if args == [] then {-getContents >>= processFile-} putStrLn "Error: no filename given." else evalFiles ("prelude.lfn" : args) initialState
+  if args == [] then {-getContents >>= processFile-} putStrLn "Error: no filename given." else evalFiles ("prelude.lfn" : args) initialState Map.empty
