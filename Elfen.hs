@@ -181,6 +181,7 @@ specialOperators = Map.fromList
                                  Cons _ _ -> pure (Abstraction body (map asSymbol $ unElfenList params) e)
                                  Symbol s -> pure (VarAbstraction body s e)
                             )),
+                     ("let", (\(Cons (Cons (Symbol s) (Cons e Nil)) (Cons body Nil)) env -> define s e env >>= \env' -> eval body env')),
                     ("if", (\(Cons test (Cons true (Cons false Nil))) e -> eval test e >>= (\r -> if r == Nil then eval false e else eval true e))),
                     ("letrec1", fixOperator),
                     ("letrec2", fixOpTwo),

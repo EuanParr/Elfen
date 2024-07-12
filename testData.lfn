@@ -1,0 +1,7 @@
+(macro
+  case
+  (y
+    (lam
+      (case)      
+      (lam
+       cases))))
