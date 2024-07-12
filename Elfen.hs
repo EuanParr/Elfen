@@ -32,6 +32,7 @@ data Value =
   | Nil
   | Constant Constant
   | Abstraction Value [Symbol] Environment
+  | VarAbstraction Value Symbol Environment
   | Primitive Primitive deriving Eq
 
 instance Show Value where
@@ -114,10 +115,11 @@ evalList _ _ = error "Evaluating a non-list as a list"
 
 apply :: Value -> [Value] -> M Value
 apply (Primitive x) ys = applyPrimitive x ys
-apply a@(Abstraction x ss e) ys = (defineList (matchingZip ss ys) e) >>= \e' -> eval x e'
+apply a@(Abstraction x ss env) ys = (defineList (matchingZip ss ys) env) >>= \env' -> eval x env'
   where matchingZip [] [] = []
         matchingZip (x':xs') (y':ys') = (x', y') : matchingZip xs' ys'
         matchingZip _ _ = error $ "different number of arguments and parameters: " ++ show a ++ ", " ++ show ys
+apply (VarAbstraction x s env) ys = define s (elfenList ys) env >>= \env' -> eval x env'
 apply a ys = error $ "Applying a non-applicable value " ++ show a ++ " to " ++ show ys
 
 -- give a symbol a new value binding
@@ -153,7 +155,11 @@ applyPrimitive o vs = error $ "Wrong argument type (s) for primitive operator: "
 specialOperators :: Map.Map Symbol (Value -> Environment -> M Value)
 specialOperators = Map.fromList
                    [("quote", (\(Cons v _) _ -> pure v)),
-                    ("lam", (\(Cons params (Cons body Nil)) e -> pure (Abstraction body (map asSymbol $ unElfenList params) e))),
+                    ("lam", (\(Cons params (Cons body Nil)) e ->
+                               case params of
+                                 Cons _ _ -> pure (Abstraction body (map asSymbol $ unElfenList params) e)
+                                 Symbol s -> pure (VarAbstraction body s e)
+                            )),
                     ("if", (\(Cons test (Cons true (Cons false Nil))) e -> eval test e >>= (\r -> if r == Nil then eval false e else eval true e))),
                     ("letrec1", fixOperator),
                     ("letrec2", fixOpTwo),
