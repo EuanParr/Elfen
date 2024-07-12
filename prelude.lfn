@@ -1,6 +1,6 @@
 (def t 't)
 
-(def nil '())
+(def nil ())
 
 (def deflam-maker (lam (name args body)
                        (cons 'def (cons name (cons (cons 'lam (cons args (cons body nil))) nil)))))
@@ -16,6 +16,8 @@
 
 (deflam <= (x y) (if (eqc x y) 't (< x y)))
 
+(deflam latin-upper-p (c) (if (<= (cf '"A") c) (<= c (cf '"Z")) nil))
+(deflam latin-lower-p (c) (if (<= (cf '"a") c) (<= c (cf '"z")) nil))
+
 (def map
      (letrec (map (lam (f xs) (if xs (cons (f (cf xs)) (map f (cs xs))) ()))) map))
-
