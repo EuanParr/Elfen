@@ -14,6 +14,8 @@
 
 (deflam list xs xs)
 
+(deflam <= (x y) (if (eqc x y) 't (< x y)))
+
 (def map
      (letrec (map (lam (f xs) (if xs (cons (f (cf xs)) (map f (cs xs))) ()))) map))
 

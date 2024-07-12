@@ -18,10 +18,10 @@ type Environment = Map.Map Symbol Value
 
 data Constant =
     Character Char
-  | Integer Integer deriving Eq
+  | Integer Integer deriving (Eq, Ord)
 
 instance Show Constant where
-  show (Character c) = [c]
+  show (Character c) = ['<', c, '>']
   show (Integer n) = show n
 
 type Symbol = String
@@ -137,7 +137,7 @@ defineList ((x, y):zs) e = do
 
 data Primitive = CONS | CF | CS
  | PLUS | MINUS | EQC | EQS | CONSP
- | SYMP | STRTOSYM | SYMTOSTR deriving (Eq, Show)
+ | SYMP | STRTOSYM | SYMTOSTR | LESSTHAN deriving (Eq, Show)
 
 applyPrimitive :: Primitive -> [Value] -> M Value
 applyPrimitive CONS [x,y] = pure $ Cons x y
@@ -154,6 +154,7 @@ applyPrimitive SYMP [Nil] = pure $ Symbol "t"
 applyPrimitive SYMP _ = pure $ Nil
 applyPrimitive STRTOSYM [x] = pure $ Symbol $ map (\(Constant (Character c)) -> c) $ unElfenList x
 applyPrimitive SYMTOSTR [Symbol x] = pure $ elfenString x
+applyPrimitive LESSTHAN [Constant x, Constant y] = pure $ if x < y then Symbol "t" else Nil
 applyPrimitive o vs = error $ "Wrong argument type (s) for primitive operator: " ++ show o ++ " of " ++ show vs
 
 initialState :: Environment
@@ -168,7 +169,8 @@ initialState = mu (defineList initialDefinitions Map.empty)
           ("cs", Primitive CS),
           ("symp", Primitive SYMP),
           ("str-to-sym", Primitive STRTOSYM),
-          ("sym-to-str", Primitive SYMTOSTR)]
+          ("sym-to-str", Primitive SYMTOSTR),
+          ("<", Primitive LESSTHAN)]
  
 {- I pick out special operators at symbol level rather than value level - it will not be possible to evaluate anything but some predetermined symbols into special operators, which is in accordance with typical Lisps and will make checking easier (it's hard to imagine what type a special operator might have). -}
 specialOperators :: Map.Map Symbol (Value -> Environment -> M Value)
