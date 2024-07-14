@@ -14,7 +14,9 @@ Dynamic scope is easy - just have memory map each symbol to a value
 For lexical scope, different occurrences of symbols must be mapped to different values at any one time
 -}
 
-type Environment = Map.Map Symbol Value
+data EnvironmentKey = Term Symbol | Macro Symbol deriving (Eq, Ord, Show)
+
+type Environment = Map.Map EnvironmentKey Value
 
 data Constant =
     Character Char
@@ -81,17 +83,17 @@ return a >>= k
 
 
 
-bind :: Symbol -> Value -> Environment -> Environment
-bind s v e = Map.insert s v e
+bind :: EnvironmentKey -> Value -> Environment -> Environment
+bind s v env = Map.insert s v env
 
-bindForbidShadow :: Symbol -> Value -> Environment -> Environment
-bindForbidShadow s v e =
-  if Map.member s e
+bindForbidShadow :: EnvironmentKey -> Value -> Environment -> Environment
+bindForbidShadow s v env =
+  if Map.member s env
   then error ("Forbidden redefining of symbol: " ++ show s)
-  else Map.insert s v e
+  else Map.insert s v env
 
 eval :: Value -> Environment -> M Value
-eval (Symbol s) e = pure $ (Map.findWithDefault) (error $ "Symbol has no definition: " ++ show s) s e
+eval (Symbol s) env = pure $ (Map.findWithDefault) (error $ "Symbol has no definition: " ++ show s) (Term s) env
 eval (Cons x y) e = evalApplication x y e
 eval Nil _ = pure Nil
 eval (Constant c) _ = pure (Constant c)
@@ -115,21 +117,21 @@ evalList _ _ = error "Evaluating a non-list as a list"
 
 apply :: Value -> [Value] -> M Value
 apply (Primitive x) ys = applyPrimitive x ys
-apply a@(Abstraction x ss env) ys = (defineList (matchingZip ss ys) env) >>= \env' -> eval x env'
+apply a@(Abstraction x ss env) ys = (defineList (matchingZip (map Term ss) ys) env) >>= \env' -> eval x env'
   where matchingZip [] [] = []
         matchingZip (x':xs') (y':ys') = (x', y') : matchingZip xs' ys'
         matchingZip _ _ = error $ "different number of arguments and parameters: " ++ show a ++ ", " ++ show ys
-apply (VarAbstraction x s env) ys = define s (elfenList ys) env >>= \env' -> eval x env'
+apply (VarAbstraction x s env) ys = define (Term s) (elfenList ys) env >>= \env' -> eval x env'
 apply a ys = error $ "Applying a non-applicable value " ++ show a ++ " to " ++ show ys
 
 -- give a symbol a new value binding
-define :: Symbol -> Value -> Environment -> M Environment
+define :: EnvironmentKey -> Value -> Environment -> M Environment
 define s v e = pure $ bind s v e
 
-defineForbidShadow :: Symbol -> Value -> Environment -> M Environment
+defineForbidShadow :: EnvironmentKey -> Value -> Environment -> M Environment
 defineForbidShadow s v e = pure $ bindForbidShadow s v e
 
-defineList :: [(Symbol, Value)] -> Environment -> M Environment
+defineList :: [(EnvironmentKey, Value)] -> Environment -> M Environment
 defineList [] e = pure e
 defineList ((x, y):zs) e = do
   e' <- define x y e
@@ -160,52 +162,52 @@ applyPrimitive o vs = error $ "Wrong argument type (s) for primitive operator: "
 initialState :: Environment
 initialState = mu (defineList initialDefinitions Map.empty)
  where initialDefinitions =
-         [("+", Primitive PLUS),
-          ("eqc", Primitive EQC),
-          ("eqs", Primitive EQS),
-          ("consp", Primitive CONSP),
-          ("cons", Primitive CONS),
-          ("cf", Primitive CF),
-          ("cs", Primitive CS),
-          ("symp", Primitive SYMP),
-          ("str-to-sym", Primitive STRTOSYM),
-          ("sym-to-str", Primitive SYMTOSTR),
-          ("<", Primitive LESSTHAN)]
+         [(Term "+", Primitive PLUS),
+          (Term "eqc", Primitive EQC),
+          (Term "eqs", Primitive EQS),
+          (Term "consp", Primitive CONSP),
+          (Term "cons", Primitive CONS),
+          (Term "cf", Primitive CF),
+          (Term "cs", Primitive CS),
+          (Term "symp", Primitive SYMP),
+          (Term "str-to-sym", Primitive STRTOSYM),
+          (Term "sym-to-str", Primitive SYMTOSTR),
+          (Term "<", Primitive LESSTHAN)]
  
 {- I pick out special operators at symbol level rather than value level - it will not be possible to evaluate anything but some predetermined symbols into special operators, which is in accordance with typical Lisps and will make checking easier (it's hard to imagine what type a special operator might have). -}
 specialOperators :: Map.Map Symbol (Value -> Environment -> M Value)
 specialOperators = Map.fromList
                    [("quote", (\(Cons v _) _ -> pure v)),
-                    ("lam", (\(Cons params (Cons body Nil)) e ->
+                    ("lam", (\(Cons params (Cons body Nil)) env ->
                                case params of
-                                 Cons _ _ -> pure (Abstraction body (map asSymbol $ unElfenList params) e)
-                                 Symbol s -> pure (VarAbstraction body s e)
+                                 Cons _ _ -> pure (Abstraction body (map asSymbol $ unElfenList params) env)
+                                 Symbol s -> pure (VarAbstraction body s env)
                             )),
-                     ("let", (\(Cons (Cons (Symbol s) (Cons e Nil)) (Cons body Nil)) env -> define s e env >>= \env' -> eval body env')),
-                    ("if", (\(Cons test (Cons true (Cons false Nil))) e -> eval test e >>= (\r -> if r == Nil then eval false e else eval true e))),
+                     ("let", (\(Cons (Cons (Symbol s) (Cons expr Nil)) (Cons body Nil)) env -> define (Term s) expr env >>= \env' -> eval body env')),
+                    ("if", (\(Cons test (Cons true (Cons false Nil))) env -> eval test env >>= (\r -> if r == Nil then eval false env else eval true env))),
                     ("letrec1", fixOperator),
                     ("letrec2", fixOpTwo),
                     ("letrec", mutualFixOperator),
-                    ("apply", (\(Cons f (Cons xs Nil)) e -> eval f e >>= \f' -> evalList xs e >>= \xs' -> apply f' xs'))]
+                    ("apply", (\(Cons f (Cons xs Nil)) env -> eval f env >>= \f' -> evalList xs env >>= \xs' -> apply f' xs'))]
 
 fixOperator :: Value -> Environment -> M Value
-fixOperator (Cons (Cons s (Cons v Nil)) (Cons body Nil)) e = do
-  openDef <- eval (elfenList [Symbol "lam", elfenList [s], v]) e
+fixOperator (Cons (Cons (Symbol s) (Cons v Nil)) (Cons body Nil)) e = do
+  openDef <- eval (elfenList [Symbol "lam", elfenList [Symbol s], v]) e
   recursiveV <- apply yFunction [openDef]
-  e' <- define (asSymbol s) recursiveV e
+  e' <- define (Term s) recursiveV e
   eval body e'
 
 fixOpTwo :: Value -> Environment -> M Value
-fixOpTwo (Cons (Cons s (Cons v (Cons s' (Cons v' Nil)))) (Cons body Nil)) e = do
-  openDef <- pure (elfenList [Symbol "lam", elfenList [s, s'], v])
-  openDef' <- pure (elfenList [Symbol "lam", elfenList [s, s'], v'])
+fixOpTwo (Cons (Cons (Symbol s) (Cons v (Cons (Symbol s') (Cons v' Nil)))) (Cons body Nil)) e = do
+  openDef <- pure (elfenList [Symbol "lam", elfenList [Symbol s, Symbol s'], v])
+  openDef' <- pure (elfenList [Symbol "lam", elfenList [Symbol s, Symbol s'], v'])
   listDef <- eval (elfenList [Symbol "lam", elfenList [Symbol "self"], elfenList [Symbol "cons", elfenList [openDef, elfenIndexer 0 (Symbol "self"), elfenIndexer 1 (Symbol "self")], elfenList [Symbol "cons", elfenList [openDef', elfenIndexer 0 (Symbol "self"), elfenIndexer 1 (Symbol "self")], Nil]]]) e
   recursiveV <- apply yFunction [listDef]
   rv <- apply (Primitive CF) [recursiveV]
   rv'' <- apply (Primitive CS) [recursiveV]
   rv' <- apply (Primitive CF) [rv'']
-  e' <- define (asSymbol s) rv e
-  e'' <- define (asSymbol s') rv' e'
+  e' <- define (Term s) rv e
+  e'' <- define (Term s') rv' e'
   eval body e''
 
 elfenIndexer :: Integer -> Value -> Value
@@ -230,7 +232,7 @@ mutualFixOperator (Cons defs (Cons body Nil)) e =
           listDef <- eval (elfenList [Symbol "lam", elfenList [Symbol "self"], elfenListMaker aps]) e
           recursiveV <- apply yFunction [listDef]
           results <- mapM (\(n, _, _) -> Foldable.foldrM (\_ v -> apply (Primitive CS) [v]) recursiveV [1..n] >>= (\v -> apply (Primitive CF) [v])) openDefs
-          e' <- defineList (zip (map asSymbol ss) results) e
+          e' <- defineList (zip (map (Term . asSymbol) ss) results) e
           eval body e'
           --pure $ elfenList results
 
@@ -267,37 +269,37 @@ elfenMapM f Nil = pure Nil
 
 evalTopLevelSexp :: Value -> Environment -> M (Value, Environment)
 evalTopLevelSexp (Cons (Symbol "def") (Cons (Symbol x) (Cons exp Nil))) env =
-  eval exp env >>= \v -> defineForbidShadow x v env >>= \env' -> pure (v, env')
+  eval exp env >>= \v -> defineForbidShadow (Term x) v env >>= \env' -> pure (v, env')
 evalTopLevelSexp exp env = eval exp env >>= \v -> pure (v, env)
 
 macroExpandOnce :: Value -> Environment -> M (Value, Bool)
-macroExpandOnce v@(Cons (Symbol x) y) menv =
-  case Map.lookup x menv of
+macroExpandOnce v@(Cons (Symbol x) y) env =
+  case Map.lookup (Macro x) env of
     Just f -> apply f (unElfenList y) >>= \v' -> pure (v', True)
     Nothing -> pure (v, False)
-macroExpandOnce v menv = pure (v, False)
+macroExpandOnce v env = pure (v, False)
 
 -- (note - this uses an eager reduction strategy and macro reduction is not confluent)
 macroNormalise :: Value -> Environment -> M Value
-macroNormalise v@(Cons _ _) menv = elfenMapM (flip macroNormalise menv) v >>=
-  \z -> macroExpandOnce z menv >>=
-  \(v', changed) -> if changed then macroNormalise v' menv else pure v'
-macroNormalise v menv = pure v
+macroNormalise v@(Cons _ _) env = elfenMapM (flip macroNormalise env) v >>=
+  \z -> macroExpandOnce z env >>=
+  \(v', changed) -> if changed then macroNormalise v' env else pure v'
+macroNormalise v env = pure v
 
 -- apply macros then process any directives or delegate to evalTopLevelSexp
-execTopLevelSexp :: Value -> Environment -> Environment -> M (Value, Environment, Environment)
-execTopLevelSexp exp env menv = macroNormalise exp menv >>= \exp' ->
+execTopLevelSexp :: Value -> Environment -> M (Value, Environment)
+execTopLevelSexp exp env = macroNormalise exp env >>= \exp' ->
   case exp' of
     (Cons (Symbol "macro") (Cons (Symbol x) (Cons body Nil))) ->
-      eval body env >>= \body' -> define x body' menv >>= \menv' -> pure (body', env, menv')
-    _ -> evalTopLevelSexp exp' env >>= \(exp'', env') -> pure (exp'', env', menv)
+      eval body env >>= \body' -> define (Macro x) body' env >>= \env' -> pure (body', env')
+    _ -> evalTopLevelSexp exp' env >>= \(exp'', env') -> pure (exp'', env')
 
-execSexpStream :: [Value] -> Environment -> Environment -> M ([Value], Environment, Environment)
-execSexpStream [] env menv = pure ([], env, menv)
-execSexpStream (x:y) env menv = do
-  (x', env', menv') <- execTopLevelSexp x env menv
-  (y', env'', menv'') <- execSexpStream y env' menv'
-  pure (x' : y', env'', menv'')
+execSexpStream :: [Value] -> Environment -> M ([Value], Environment)
+execSexpStream [] env = pure ([], env)
+execSexpStream (x:y) env = do
+  (x', env') <- execTopLevelSexp x env
+  (y', env'') <- execSexpStream y env'
+  pure (x' : y', env'')
 
 data Token = LeftParenthesis | RightParenthesis
   | SymbolLiteral String
@@ -368,17 +370,17 @@ parse ts = case parseVal ts of
 
 
 
-processFile :: String -> Environment -> Environment -> IO (String, Environment, Environment)
-processFile f env menv =
-  System.IO.readFile f >>= \text -> let (vals, env', menv') = mu $ execSexpStream (Maybe.fromMaybe [Nil] $ parse $ tokenise text) env menv in pure (unlines $ map show vals, env', menv')
+processFile :: String -> Environment -> IO (String, Environment)
+processFile f env =
+  System.IO.readFile f >>= \text -> let (vals, env') = mu $ execSexpStream (Maybe.fromMaybe [Nil] $ parse $ tokenise text) env in pure (unlines $ map show vals, env')
 
 -- for now, output all resulting values from the last file given
-evalFiles :: [String] -> Environment -> Environment -> IO ()
-evalFiles [] env menv = putStrLn "Error: unreachable state, should have prelude"
-evalFiles [x] env menv = processFile x env menv >>= \(exp', _, _) -> putStrLn exp'
-evalFiles (x:xs) env menv = processFile x env menv >>= \(_, env', menv') -> evalFiles xs env' menv'
+evalFiles :: [String] -> Environment -> IO ()
+evalFiles [] env= putStrLn "Error: unreachable state, should have prelude"
+evalFiles [x] env = processFile x env >>= \(exp', _) -> putStrLn exp'
+evalFiles (x:xs) env = processFile x env >>= \(_, env') -> evalFiles xs env'
 
 main :: IO ()
 main = do
   args <- System.Environment.getArgs
-  if args == [] then {-getContents >>= processFile-} putStrLn "Error: no filename given." else evalFiles ("prelude.lfn" : args) initialState Map.empty
+  if args == [] then {-getContents >>= processFile-} putStrLn "Error: no filename given." else evalFiles ("prelude.lfn" : args) initialState

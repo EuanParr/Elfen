@@ -2,13 +2,13 @@
 
 (def nil ())
 
+(def y (lam y (f) ((lam (x) (f (x x)))
+                     (lam (x) (f (x x))))))
+
 (def deflam-maker (lam (name args body)
-                       (cons 'def (cons name (cons (cons 'lam (cons args (cons body nil))) nil)))))
+                       (cons 'def (cons name (cons (cons 'lam (cons args (cons body ()))) ())))))
 
 (macro deflam deflam-maker)
-
-(deflam y (f) ((lam (x) (f (x x)))
-                 (lam (x) (f (x x)))))
 
 (deflam id (x) x)
 
