@@ -197,8 +197,8 @@ specialOperators = Map.fromList
                     ("letrec1", fixOperator),
                     ("letrec2", fixOpTwo),
                     ("letrec", mutualFixOperator),
-                    ("apply", (\(Cons f (Cons xs Nil)) env -> eval f env >>= \f' -> evalList xs env >>= \xs' -> apply f' xs')),
-                    ("freshsym", freshSym)]
+                    ("apply", (\(Cons f (Cons xs Nil)) env -> eval f env >>= \f' -> evalList xs env >>= \xs' -> apply f' xs')){-,
+                    ("freshsym", freshSym)-}]
 
 freshSym :: Value -> Environment -> M Value
 freshSym expr env = pure $ Symbol $ sym $ fresh 0 $ add expr (Map.union env $ Map.fromList $ map (\k -> (Term k, Nil)) $ Map.keys specialOperators) where
