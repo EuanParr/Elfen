@@ -2,17 +2,16 @@
 
 (def nil ())
 
-(def y (lam y (f) ((lam (x) (f (x x)))
+(def y (lam (f) ((lam (x) (f (x x)))
                      (lam (x) (f (x x))))))
+
+(def list (lam x x))
+(def id (lam (x) x))
 
 (def deflam-maker (lam (name args body)
                        (cons 'def (cons name (cons (cons 'lam (cons args (cons body ()))) ())))))
 
 (macro deflam deflam-maker)
-
-(deflam id (x) x)
-
-(deflam list xs xs)
 
 (deflam <= (x y) (if (eqc x y) 't (< x y)))
 

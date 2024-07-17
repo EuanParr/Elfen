@@ -1,0 +1,9 @@
+(def rec1f (lam (v e) (list (quotation y) (list 'lam (list v) e))))
+
+(macro rec1 rec1f)
+
+(def * (rec1 * (lam (n m) (if (eqc n 0) 0 (+ m (* (+ n -1) m))))))
+(def times ((lam (y) (rec1 * (lam (n m) (if (eqc n 0) 0 (+ m (* (+ n -1) m)))))) (lam (f) (lam (x y) x))))
+
+(* 3 4)
+(times 3 4)

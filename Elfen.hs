@@ -35,15 +35,18 @@ data Value =
   | Constant Constant
   | Abstraction Value [Symbol] Environment
   | VarAbstraction Value Symbol Environment
-  | Primitive Primitive deriving Eq
+  | Primitive Primitive
+  | Quoted Value deriving Eq
 
 instance Show Value where
   show (Symbol s) = s
   show c@(Cons _ _) = showList' c
   show Nil = showList' Nil
   show (Constant c) = show c
-  show (Abstraction v ss e) = "<Abstraction " ++ show ss ++ " " ++ show v ++ ">"  
+  show (Abstraction v ss _) = "<Abstraction " ++ show ss ++ " " ++ show v ++ ">"
+  show (VarAbstraction v s _) = "<Abstraction " ++ show s ++ " " ++ show v ++ ">"  
   show (Primitive p) = "<Primitive " ++ show p ++ ">"
+  show (Quoted x) = '\'' : show x
 
 showList' :: Value -> String
 showList' v = '(' : f v
@@ -97,7 +100,10 @@ eval (Symbol s) env = pure $ (Map.findWithDefault) (error $ "Symbol has no defin
 eval (Cons x y) e = evalApplication x y e
 eval Nil _ = pure Nil
 eval (Constant c) _ = pure (Constant c)
-eval _ _ = error "Evaluating an applicable value outside of an application"
+eval (Abstraction _ _ _) _ = error "Evaluating an applicable value outside of an application"
+eval (VarAbstraction _ _ _) _ = error "Evaluating an applicable value outside of an application"
+eval (Primitive _) _ = error "Evaluating an applicable value outside of an application"
+eval (Quoted x) _ = pure x
 
 evalApplication :: Value -> Value -> Environment -> M Value
 evalApplication (Symbol x) y e -- check for special forms
@@ -139,7 +145,8 @@ defineList ((x, y):zs) e = do
 
 data Primitive = CONS | CF | CS
  | PLUS | MINUS | EQC | EQS | CONSP
- | SYMP | STRTOSYM | SYMTOSTR | LESSTHAN deriving (Eq, Show)
+ | SYMP | STRTOSYM | SYMTOSTR | LESSTHAN
+ | QUOTED deriving (Eq, Show)
 
 applyPrimitive :: Primitive -> [Value] -> M Value
 applyPrimitive CONS [x,y] = pure $ Cons x y
@@ -157,6 +164,7 @@ applyPrimitive SYMP _ = pure $ Nil
 applyPrimitive STRTOSYM [x] = pure $ Symbol $ map (\(Constant (Character c)) -> c) $ unElfenList x
 applyPrimitive SYMTOSTR [Symbol x] = pure $ elfenString x
 applyPrimitive LESSTHAN [Constant x, Constant y] = pure $ if x < y then Symbol "t" else Nil
+applyPrimitive QUOTED [x] = pure $ Quoted x
 applyPrimitive o vs = error $ "Wrong argument type (s) for primitive operator: " ++ show o ++ " of " ++ show vs
 
 initialState :: Environment
@@ -172,7 +180,8 @@ initialState = mu (defineList initialDefinitions Map.empty)
           (Term "symp", Primitive SYMP),
           (Term "str-to-sym", Primitive STRTOSYM),
           (Term "sym-to-str", Primitive SYMTOSTR),
-          (Term "<", Primitive LESSTHAN)]
+          (Term "<", Primitive LESSTHAN),
+          (Term "quotation", Primitive QUOTED)]
  
 {- I pick out special operators at symbol level rather than value level - it will not be possible to evaluate anything but some predetermined symbols into special operators, which is in accordance with typical Lisps and will make checking easier (it's hard to imagine what type a special operator might have). -}
 specialOperators :: Map.Map Symbol (Value -> Environment -> M Value)
@@ -357,7 +366,7 @@ parseVal (StringLiteral s : ts) = Just (elfenString s, ts)
 parseVal (IntegerLiteral s : ts) = Just (Constant (Integer s), ts)
 parseVal (Apostrophe : ts) = case parseVal ts of
                                Nothing -> Nothing
-                               Just (v, ts') -> Just (Cons (Symbol "quote") (Cons v Nil), ts')
+                               Just (v, ts') -> Just (Quoted v, ts')
 
 parseList :: [Token] -> Maybe (Value, [Token])
 parseList (RightParenthesis:ts) = Just (Nil, ts)
