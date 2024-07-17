@@ -28,3 +28,5 @@
 (letrec (odd (lam (n) (if (eqc n 0) nil (even (+ n -1))))
          even (lam (n) (if (eqc n 0) t (odd (+ n -1)))))
      (even 11))
+
+(foldlist + 0 (list 5 6 7 8 9))

@@ -146,7 +146,7 @@ defineList ((x, y):zs) e = do
 data Primitive = CONS | CF | CS
  | PLUS | MINUS | EQC | EQS | CONSP
  | SYMP | STRTOSYM | SYMTOSTR | LESSTHAN
- | QUOTED deriving (Eq, Show)
+ | QUOTED | PANIC deriving (Eq, Show)
 
 applyPrimitive :: Primitive -> [Value] -> M Value
 applyPrimitive CONS [x,y] = pure $ Cons x y
@@ -165,6 +165,7 @@ applyPrimitive STRTOSYM [x] = pure $ Symbol $ map (\(Constant (Character c)) -> 
 applyPrimitive SYMTOSTR [Symbol x] = pure $ elfenString x
 applyPrimitive LESSTHAN [Constant x, Constant y] = pure $ if x < y then Symbol "t" else Nil
 applyPrimitive QUOTED [x] = pure $ Quoted x
+applyPrimitive PANIC xs = error $ "panicked: " ++ show xs
 applyPrimitive o vs = error $ "Wrong argument type (s) for primitive operator: " ++ show o ++ " of " ++ show vs
 
 initialState :: Environment
@@ -181,7 +182,8 @@ initialState = mu (defineList initialDefinitions Map.empty)
           (Term "str-to-sym", Primitive STRTOSYM),
           (Term "sym-to-str", Primitive SYMTOSTR),
           (Term "<", Primitive LESSTHAN),
-          (Term "quotation", Primitive QUOTED)]
+          (Term "quotation", Primitive QUOTED),
+          (Term "panic", Primitive PANIC)]
  
 {- I pick out special operators at symbol level rather than value level - it will not be possible to evaluate anything but some predetermined symbols into special operators, which is in accordance with typical Lisps and will make checking easier (it's hard to imagine what type a special operator might have). -}
 specialOperators :: Map.Map Symbol (Value -> Environment -> M Value)
@@ -194,7 +196,6 @@ specialOperators = Map.fromList
                             )),
                      ("let", (\(Cons (Cons (Symbol s) (Cons expr Nil)) (Cons body Nil)) env -> eval expr env >>= \expr' -> define (Term s) expr' env >>= \env' -> eval body env')),
                     ("if", (\(Cons test (Cons true (Cons false Nil))) env -> eval test env >>= (\r -> if r == Nil then eval false env else eval true env))),
-                    ("letrec1", fixOperator),
                     ("letrec2", fixOpTwo),
                     ("letrec", mutualFixOperator),
                     ("apply", (\(Cons f (Cons xs Nil)) env -> eval f env >>= \f' -> evalList xs env >>= \xs' -> apply f' xs')){-,

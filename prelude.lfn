@@ -10,6 +10,10 @@
 
 (macro rec1 (lam (v e) (list (quotation y) (list 'lam (list v) e))))
 
+(def foldlist (rec1 foldlist (lam (c n xs) (if xs (c (cf xs) (foldlist c n (cs xs))) n))))
+(def compose (lam (f g) (lam (x) (f (g x)))))
+(def map (lam (f xs) (foldlist (lam (y ys) (cons (f y) ys)) () xs)))
+
 (def deflam-maker (lam (name args body)
                        (cons 'def (cons name (cons (cons 'lam (cons args (cons body ()))) ())))))
 
@@ -20,5 +24,3 @@
 (deflam latin-upper-p (c) (if (<= (cf '"A") c) (<= c (cf '"Z")) nil))
 (deflam latin-lower-p (c) (if (<= (cf '"a") c) (<= c (cf '"z")) nil))
 
-(def map
-     (letrec (map (lam (f xs) (if xs (cons (f (cf xs)) (map f (cs xs))) ()))) map))
