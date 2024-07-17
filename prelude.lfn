@@ -8,6 +8,8 @@
 (def list (lam x x))
 (def id (lam (x) x))
 
+(macro rec1 (lam (v e) (list (quotation y) (list 'lam (list v) e))))
+
 (def deflam-maker (lam (name args body)
                        (cons 'def (cons name (cons (cons 'lam (cons args (cons body ()))) ())))))
 

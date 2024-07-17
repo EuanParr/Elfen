@@ -1,30 +1,30 @@
 (((lam (f) ((lam (x) (f (x x)))
             (lam (x) (f (x x)))))
-  (lam (*) (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m))))))
+  (lam (*) (lam (n m) (if (eqc n 0) 0 (+ m (* (+ n -1) m))))))
  1 2)
 
-((y (lam (*) (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m)))))) 2 3)
+((y (lam (*) (lam (n m) (if (eqc n 0) 0 (+ m (* (+ n -1) m)))))) 2 3)
 
-(letrec1 (* (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m))))) (* 3 4))
+;(let (* (rec1 * (lam (n m) (if (eqc n 0) 0 (+ m (* (+ n -1) m)))))) (* 3 4))
 
 ((cf (cs (y (lam (self) (cons
-                         ((lam (odd even) (lam (n) (if (eqn n 0) nil (even (+ n -1)))))
+                         ((lam (odd even) (lam (n) (if (eqc n 0) nil (even (+ n -1)))))
                           (cf self)
                           (cf (cs self)))
                          (cons
-                          ((lam (odd even) (lam (n) (if (eqn n 0) t (odd (+ n -1)))))
+                          ((lam (odd even) (lam (n) (if (eqc n 0) t (odd (+ n -1)))))
                            (cf self)
                            (cf (cs self)))
                           nil))))))
  10)
 
-(letrec2 (odd (lam (n) (if (eqn n 0) nil (even (+ n -1))))
-          even (lam (n) (if (eqn n 0) t (odd (+ n -1)))))
+(letrec2 (odd (lam (n) (if (eqc n 0) nil (even (+ n -1))))
+          even (lam (n) (if (eqc n 0) t (odd (+ n -1)))))
      (even 10))
 
-(letrec (* (lam (n m) (if (eqn n 0) 0 (+ m (* (+ n -1) m)))))
+(letrec (* (lam (n m) (if (eqc n 0) 0 (+ m (* (+ n -1) m)))))
      (* 4 5))
 
-(letrec (odd (lam (n) (if (eqn n 0) nil (even (+ n -1))))
-         even (lam (n) (if (eqn n 0) t (odd (+ n -1)))))
+(letrec (odd (lam (n) (if (eqc n 0) nil (even (+ n -1))))
+         even (lam (n) (if (eqc n 0) t (odd (+ n -1)))))
      (even 11))
